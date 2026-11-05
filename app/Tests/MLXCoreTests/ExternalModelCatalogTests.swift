@@ -2,6 +2,12 @@ import XCTest
 @testable import MLXCore
 
 final class ExternalModelCatalogTests: XCTestCase {
+    func testSeedVR2SelectedPackResolvesToMatchingRepository() {
+        let path = URL(fileURLWithPath: "/models/AbstractFramework/seedvr2-3b-4bit")
+        XCTAssertEqual(ExternalModelCatalog.seedVR2Repo(for: path), "AbstractFramework/seedvr2-3b-4bit")
+        XCTAssertNil(ExternalModelCatalog.seedVR2Repo(for: URL(fileURLWithPath: "/models/custom")))
+        XCTAssertNil(ExternalModelCatalog.seedVR2Repo(for: nil))
+    }
     func testNativeModelChooserOffersOnlyTheMatchingExternalKind() {
         func model(_ type: String) -> LocalModel {
             LocalModel(id: type, name: type, path: "/tmp/\(type)", sizeFormatted: "1 GB", modelType: type, source: .mlxServe, kind: .base)

@@ -5,12 +5,15 @@ import UniformTypeIdentifiers
 /// Local SeedVR2 restoration through the managed MLX-Gen process.
 struct ExternalUpscaleView: View {
     var initialModel: URL? = nil
-    init(initialModel: URL? = nil) { self.initialModel = initialModel }
+    init(initialModel: URL? = nil) {
+        self.initialModel = initialModel
+        _selectedRepo = State(initialValue: ExternalModelCatalog.seedVR2Repo(for: initialModel) ?? ExternalModelCatalog.seedVR2Repos[0])
+    }
     @EnvironmentObject private var server: ServerManager
     @EnvironmentObject private var downloads: DownloadManager
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var media: ExternalMediaService
-    @State private var selectedRepo = ExternalModelCatalog.seedVR2Repos[0]
+    @State private var selectedRepo: String
     @State private var model: URL?
     @State private var input: URL?
     @State private var output: URL?
@@ -77,7 +80,13 @@ struct ExternalUpscaleView: View {
             }.padding(16).frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear { model = initialModel ?? knownModel() }
-        .onChange(of: selectedRepo) { _, _ in model = knownModel(); message = "" }
+        .onChange(of: selectedRepo) { _, _ in
+            if ExternalModelCatalog.seedVR2Repo(for: model) != selectedRepo { model = knownModel() }
+            message = ""
+        }
+        .onChange(of: model) { _, selected in
+            if let repo = ExternalModelCatalog.seedVR2Repo(for: selected), selectedRepo != repo { selectedRepo = repo }
+        }
     }
 
     private func fileRow(_ title: String, value: String, action: @escaping () -> Void) -> some View {

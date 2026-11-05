@@ -19,6 +19,11 @@ enum ExternalModelCatalog {
         "AbstractFramework/seedvr2-3b-4bit"
     ]
 
+    static func seedVR2Repo(for model: URL?) -> String? {
+        guard let model else { return nil }
+        return seedVR2Repos.first { ($0 as NSString).lastPathComponent == model.lastPathComponent }
+    }
+
     static func seedVR2Ready(at root: URL) -> Bool {
         componentReady(at: root.appendingPathComponent("transformer"), requiredKeys: ["vid_in.proj.weight", "txt_in.weight", "emb_in.proj_in.weight"])
             && componentReady(at: root.appendingPathComponent("vae"), requiredKeys: ["encoder.conv_in.weight", "decoder.conv_out.weight"])

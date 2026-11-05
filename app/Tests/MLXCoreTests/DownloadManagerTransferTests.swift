@@ -44,6 +44,44 @@ final class DownloadManagerTransferTests: XCTestCase {
 
     // MARK: - Happy path
 
+    func testSeedVR2DownloadCreatesAUsableModelFromBothComponents() async throws {
+        let repo = "AbstractFramework/seedvr2-3b-4bit"
+        let transformer = #"{"weight_map":{"vid_in.proj.weight":"model.safetensors","txt_in.weight":"model.safetensors","emb_in.proj_in.weight":"model.safetensors"}}"#
+        let vae = #"{"weight_map":{"encoder.conv_in.weight":"model.safetensors","decoder.conv_out.weight":"model.safetensors"}}"#
+        let files: [(String, Data)] = [
+            ("transformer/model.safetensors.index.json", Data(transformer.utf8)),
+            ("transformer/model.safetensors", Data("transformer".utf8)),
+            ("vae/model.safetensors.index.json", Data(vae.utf8)),
+            ("vae/model.safetensors", Data("vae".utf8)),
+        ]
+        HuggingFaceStubProtocol.serve(repo: repo, files: files)
+        let manager = DownloadManager(modelsRoot: tempRoot)
+        let finished = expectation(description: "SeedVR2 download")
+        manager.startSeedVR2(repoId: repo) { finished.fulfill() }
+        await fulfillment(of: [finished], timeout: 10)
+        XCTAssertEqual(manager.downloads[repo]?.status, .completed, manager.downloads[repo]?.error ?? "")
+        let dir = DownloadManager.newLayoutDir(rootDir: tempRoot, repoId: repo)
+        XCTAssertTrue(ExternalModelCatalog.seedVR2Ready(at: URL(fileURLWithPath: dir)))
+    }
+
+    func testUncensoredVideoDownloadsMissingComponentsAcrossRepositories() async throws {
+        let profile = ExternalVideoComponents.Profile.uncensored
+        let expected = profile.sources.map { ($0.repo, $0.path, Data($0.path.utf8)) }
+        var repos: [String: [(String, Data)]] = [:]
+        for (repo, path, bytes) in expected { repos[repo, default: []].append((path, bytes)) }
+        HuggingFaceStubProtocol.serve(repos: repos)
+        let manager = DownloadManager(modelsRoot: tempRoot)
+        let finished = expectation(description: "Video components")
+        let names = Set(profile.paths.map { ($0 as NSString).lastPathComponent })
+        manager.startLTX25Components(profile: profile, names: names) { finished.fulfill() }
+        await fulfillment(of: [finished], timeout: 10)
+        for (repo, path, bytes) in expected {
+            XCTAssertEqual(manager.downloads[repo]?.status, .completed, manager.downloads[repo]?.error ?? "")
+            let base = DownloadManager.newLayoutDir(rootDir: tempRoot, repoId: repo)
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: base).appendingPathComponent(path)), bytes)
+        }
+    }
+
     func testAWholeRepoLandsIntactWithNoLeftovers() async throws {
         let files = Self.fixtureFiles()
         HuggingFaceStubProtocol.serve(repo: repoId, files: files)
