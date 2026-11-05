@@ -4,6 +4,28 @@ import AppKit
 
 @MainActor
 final class ManagedMediaProcessTests: XCTestCase {
+    func testProgressReportsKnownVideoStagesWithoutEchoingLogs() {
+        XCTAssertEqual(ExternalMediaProgress.stage(in: "[I] loading diffusion model from /private/path"), "Loading model")
+        XCTAssertEqual(ExternalMediaProgress.stage(in: "[I] sampling using Euler method"), "Generating video")
+        XCTAssertEqual(ExternalMediaProgress.stage(in: "[I] ltx_audio_vae build cached graph"), "Decoding audio")
+        XCTAssertEqual(ExternalMediaProgress.stage(in: "[I] ltx_video_vae build cached graph"), "Decoding video")
+        XCTAssertEqual(ExternalMediaProgress.stage(in: "[I] decode_first_stage completed"), "Finishing video")
+        XCTAssertEqual(ExternalMediaProgress.stage(in: "[I] sampling using Euler\n[I] ltx_video_vae build cached graph"), "Decoding video")
+        XCTAssertNil(ExternalMediaProgress.stage(in: "private prompt with no recognized stage"))
+    }
+
+    func testRunningProcessPublishesRecognizedProgress() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let script = root.appendingPathComponent("engine")
+        try Data("#!/bin/sh\nprintf '[I] ltx_video_vae build cached graph\\n'\nsleep 1\n".utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        let runner = ManagedMediaProcess()
+        var stages: [String] = []
+        _ = try await runner.run(executable: script, arguments: [], onProgress: { stages.append($0) })
+        XCTAssertTrue(stages.contains("Decoding video"))
+    }
     func testInstalledMediaEnginesStartOnDemand() async throws {
         let env = ProcessInfo.processInfo.environment
         guard let mlx = env["TEST_MLXGEN"], let video = env["TEST_SDCLI"] else {

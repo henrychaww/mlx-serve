@@ -33,7 +33,7 @@ final class ManagedMediaProcess {
         if let quitObserver { notifications.removeObserver(quitObserver) }
     }
 
-    func run(executable: URL, arguments: [String]) async throws -> String {
+    func run(executable: URL, arguments: [String], onProgress: (@MainActor (String) -> Void)? = nil) async throws -> String {
         guard process == nil else { throw RunError.busy }
         try Task.checkCancellation()
         let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("mlx-media-\(UUID().uuidString).log")
@@ -50,6 +50,25 @@ final class ManagedMediaProcess {
         child.standardOutput = log
         child.standardError = log
         process = child
+        let progressTask: Task<Void, Never>? = onProgress.map { report in
+            Task { @MainActor in
+                var previous: String?
+                while !Task.isCancelled {
+                    if let reader = try? FileHandle(forReadingFrom: logURL) {
+                        let end = (try? reader.seekToEnd()) ?? 0
+                        try? reader.seek(toOffset: end > 65_536 ? end - 65_536 : 0)
+                        let data = (try? reader.readToEnd()) ?? Data()
+                        try? reader.close()
+                        if let stage = ExternalMediaProgress.stage(in: String(decoding: data, as: UTF8.self)), stage != previous {
+                            previous = stage
+                            report(stage)
+                        }
+                    }
+                    do { try await Task.sleep(nanoseconds: 250_000_000) } catch { return }
+                }
+            }
+        }
+        defer { progressTask?.cancel() }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 child.terminationHandler = { finished in

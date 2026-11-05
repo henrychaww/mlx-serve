@@ -21,14 +21,14 @@ final class ExternalMediaRuntime {
 
     init(executable: URL) { self.executable = executable }
 
-    func run(arguments: [String], expectedOutput: URL) async throws {
+    func run(arguments: [String], expectedOutput: URL, onProgress: (@MainActor (String) -> Void)? = nil) async throws {
         let files = FileManager.default
         guard files.isExecutableFile(atPath: executable.path) else { throw RuntimeError.missingEngine }
         guard !files.fileExists(atPath: expectedOutput.path) else { throw RuntimeError.outputExists }
         guard !process.isRunning else { throw ManagedMediaProcess.RunError.busy }
         ownsProcess = true
         defer { ownsProcess = false }
-        _ = try await process.run(executable: executable, arguments: arguments)
+        _ = try await process.run(executable: executable, arguments: arguments, onProgress: onProgress)
         try Task.checkCancellation()
         let attributes = try? files.attributesOfItem(atPath: expectedOutput.path)
         guard attributes?[.type] as? FileAttributeType == .typeRegular,

@@ -60,6 +60,7 @@ struct ExternalUpscaleView: View {
                         .disabled(media.isRunning || model == nil || input == nil || output == nil)
                     if media.isRunning && media.kind == .image {
                         ProgressView().controlSize(.small)
+                        Text(media.progressText).font(.app(.caption))
                         Button("Cancel") { media.cancel() }
                     }
                 }
@@ -153,9 +154,15 @@ struct ExternalUpscaleView: View {
             message = "Choose a complete MLX-Gen SeedVR2 model."
             return
         }
+        guard let files = ExternalModelCatalog.seedVR2WeightFiles(at: model),
+              let bytes = ExternalMediaMemory.weightBytes(for: files),
+              let minimum = ExternalMediaMemory.requiredBytes(weightBytes: bytes) else {
+            message = "Could not determine the model's memory requirements."
+            return
+        }
         do {
             let args = try ExternalMediaCommand.seedVR2(model: model.path, input: input.path, output: output.path, scale: scale)
-            media.start(kind: .image, executable: engine, arguments: args, output: output, server: server)
+            media.start(kind: .image, executable: engine, arguments: args, output: output, server: server, minimumFreeBytes: minimum)
         } catch {
             message = error.localizedDescription
         }

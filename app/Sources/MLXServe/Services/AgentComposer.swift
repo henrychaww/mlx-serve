@@ -66,7 +66,9 @@ enum AgentComposer {
                     if server.chatLoadNeeded(selectedModelPath: path) {
                         continuation.yield(.loading((path as NSString).lastPathComponent))
                     }
+                    try server.requireChatMemoryAvailability()
                     await server.ensureDefaultChatModel(selectedModelPath: path)
+                    try server.requireChatMemoryAvailability()
                     continuation.yield(.sent)
                     let user: Any = images.isEmpty ? userText
                         : MultimodalContent.build(text: userText, images: images.map { ChatImage(data: $0) },

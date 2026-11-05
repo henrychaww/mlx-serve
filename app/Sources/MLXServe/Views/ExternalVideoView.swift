@@ -75,6 +75,7 @@ struct ExternalVideoView: View {
                             .disabled(media.isRunning || model == nil || vae == nil || audioVae == nil || encoder == nil || output == nil || prompt.isEmpty)
                         if media.isRunning && media.kind == .video {
                             ProgressView().controlSize(.small)
+                            Text(media.progressText).font(.app(.caption))
                             Button("Cancel") { media.cancel() }
                         }
                     }
@@ -170,11 +171,16 @@ struct ExternalVideoView: View {
             message = "Choose a compatible LTX 2.5 GGUF video model."
             return
         }
+        guard let bytes = ExternalMediaMemory.weightBytes(for: [model, vae, audioVae, encoder]),
+              let minimum = ExternalMediaMemory.requiredBytes(weightBytes: bytes) else {
+            message = "Could not determine the model's memory requirements."
+            return
+        }
         do {
             let args = try ExternalMediaCommand.ltx25(model: model.path, vae: vae.path, audioVae: audioVae.path,
                 textEncoder: encoder.path, prompt: prompt, output: output.path, width: width, height: height, frames: frames,
                 steps: steps, guidance: guidance, initialImage: initialImage?.path)
-            media.start(kind: .video, executable: engine, arguments: args, output: output, server: server)
+            media.start(kind: .video, executable: engine, arguments: args, output: output, server: server, minimumFreeBytes: minimum)
         } catch {
             message = error.localizedDescription
         }

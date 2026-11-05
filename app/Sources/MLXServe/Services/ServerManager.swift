@@ -26,6 +26,16 @@ class ServerManager: ObservableObject {
     }
 
     func releaseExternalMedia() { externalMediaReserved = false }
+
+    nonisolated static func externalMediaAllowsChat(reserved: Bool, local: Bool) -> Bool {
+        !reserved || !local
+    }
+
+    func requireChatMemoryAvailability() throws {
+        guard Self.externalMediaAllowsChat(reserved: externalMediaReserved, local: chatIsLocal) else {
+            throw ExternalMediaBusy()
+        }
+    }
     /// `/props` `registry_generation` as last read (`modelListMoved`).
     private var seenRegistryGeneration: UInt64?
     private var loadProgressPoll: Task<Void, Never>?

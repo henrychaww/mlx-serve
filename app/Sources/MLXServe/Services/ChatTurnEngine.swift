@@ -765,7 +765,9 @@ final class ChatTurnEngine: ObservableObject, TurnRunning {
             } else {
             // A media-first server runs headless (no default model) — hot-load
             // the selected chat model once so the request below resolves.
+            try server.requireChatMemoryAvailability()
             await server.ensureDefaultChatModel(selectedModelPath: appState.selectedModelPath)
+            try server.requireChatMemoryAvailability()
             // Pin the request to the active model (server-resolved default if
             // nil) so hot-switch can finish in-flight requests on the old model.
             stream = api.streamChat(
@@ -1102,7 +1104,9 @@ final class ChatTurnEngine: ObservableObject, TurnRunning {
             } else {
             // Headless (media-first) server → ensure the selected chat model
             // is loaded + promoted before the alias-addressed request.
+            try server.requireChatMemoryAvailability()
             await server.ensureDefaultChatModel(selectedModelPath: appState.selectedModelPath)
+            try server.requireChatMemoryAvailability()
             stream = api.streamChat(
                 port: server.port,
                 messages: messages,
