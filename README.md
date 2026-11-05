@@ -1,145 +1,48 @@
-![MLX-Serve, a local LLM and media server for Apple Silicon](website/assets/mlx-serve-header.jpg)
+# Managed Media for MLX-Serve
 
-# MLX-Serve
+One Mac interface for native MLX models, SeedVR2 image upscaling, and LTX 2.5 GGUF video with generated audio.
 
-> **Portfolio fork, experimental:** This repository builds on [David Dalcu's MLX-Serve](https://github.com/ddalcu/mlx-serve). It explores managed external runtimes for SeedVR2 image upscaling and LTX 2.5 GGUF video with audio in the existing interface. The integration is a prototype, not a replacement-ready release or support for every model format. The upstream downloads and installation instructions below install the original app and do not include this fork's changes. See [integration status and limitations](docs/external-media-integration.md).
->
-> The original project and its contributors retain their copyright and license notices. This fork does not include model weights.
+This is a personal Apple Silicon integration fork of [David Dalcu's MLX-Serve](https://github.com/ddalcu/mlx-serve). It keeps the existing application and adds application-managed external media processes. It does not claim authorship of the upstream app, model architectures, or inference runtimes.
 
-The upstream project runs open models on your Mac: chat, coding agents, images, video, music, speech and 3D. Its native app and local server speak the OpenAI, Anthropic and Ollama APIs. The upstream app runs offline without Python or an account. This fork's optional MLX-Gen runtime requires a Python environment. The project is MIT licensed.
+**[Download the portfolio preview](https://github.com/henrychaww/mlx-serve/releases/tag/managed-media-preview-2026.11.06.1) · [Engineering case study](docs/portfolio-case-study.md) · [Validation record](docs/external-media-integration.md) · [Release prerequisites](docs/releases/managed-media-preview-2026.11.06.1.md)**
 
-[![Release](https://img.shields.io/github/v/release/ddalcu/mlx-serve?style=flat-square&color=0071e3)](https://github.com/ddalcu/mlx-serve/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/ddalcu/mlx-serve/total?style=flat-square&color=30d158)](https://github.com/ddalcu/mlx-serve/releases)
-[![Stars](https://img.shields.io/github/stars/ddalcu/mlx-serve?style=flat-square&color=f7a41d)](https://github.com/ddalcu/mlx-serve/stargazers)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+## What this fork adds
 
-**[Download for Mac](https://github.com/ddalcu/mlx-serve/releases/latest/download/MLX-Serve.dmg)** · [Homebrew](#install) · [iPhone](https://apps.apple.com/us/app/mlx-chat-local-ai/id6787603518) · [Linux](#linux-and-windows) · [mlxserve.com](https://mlxserve.com/) · [简体中文](README.zh-CN.md)
+| Area | Integration | Verified outcome |
+|---|---|---|
+| Image upscaling | SeedVR2 through MLX-Gen | In-app download, selection, and 4× upscaling from 256×256 to 1024×1024 using 7B 8-bit |
+| GGUF video | LTX 2.5 through a patched stable-diffusion.cpp | In-app download and companion detection; text-to-video with an audio track |
+| Video playback | Managed FFmpeg conversion and the existing native player | Generated AVI converted to H.264/AAC MP4; decoded frames visible in the app |
+| Process lifecycle | App-owned headless engines | Start on demand, serialize external jobs, and handle cancellation and app quit |
+| Memory coordination | Admission check and app-local reservation | Reject insufficient memory; block app-initiated local model loads/chat during an external job |
+| Storage | Read models in place, reuse compatible components | No model copies into engine directories; no weights in this repository or release |
 
-![Chatting with a local model, making a picture and coding with Claude Code, all on one Mac](website/assets/demo.gif)
+The tested model choices are [SeedVR2 7B 8-bit](https://huggingface.co/AbstractFramework/seedvr2-7b-8bit) and [LTX 2.5 uncensored v1.1](https://huggingface.co/frtertaer/LTX-2.5-uncensored-v1.1-FP8), selecting its **Q4_K_M GGUF** transformer. The repository name includes FP8, but the tested file is GGUF Q4_K_M. “Uncensored” is the publisher's label; a refusal rate was not measured.
 
-## Install
+## Evidence and scope
 
-**The app.** [Download MLX-Serve](https://github.com/ddalcu/mlx-serve/releases/latest/download/MLX-Serve.dmg), drag it to Applications and open it. It needs macOS 26.2 or later on Apple Silicon, suggests a model that fits your Mac, and updates itself.
+The working personal build was installed on a MacBook Pro with an Apple M5 Pro, 64 GB unified memory, and a 2 TB SSD. The final recorded Swift suite contained **4,318 tests, 34 skipped, and zero failures**. This is the full inherited-plus-integration suite, not 4,318 tests written for this fork. Live checks covered the external workflows and representative existing chat, image, sound, speech, decision, and 3D generation paths.
 
-**Homebrew.**
+The installed build also completed a fresh GGUF video job, automatically converted it, and displayed its decoded frame in the same interface. Following removal of the development directories, app startup, engine startup, a small Metal computation, and video conversion passed again.
 
-```bash
-brew tap ddalcu/mlx-serve https://github.com/ddalcu/mlx-serve
-brew trust ddalcu/mlx-serve
-brew install --cask mlx-serve   # the app
-brew install mlx-serve          # or only the command-line server
-```
+These are functional checks, not a model-quality benchmark. A 512×512, 33-frame, four-step video test took over four minutes for roughly two seconds of output. **4K/8K performance, long clips, exact refusal rates, other hardware, and a fresh-machine installer are not validated.**
 
-**The terminal**, if you know Ollama:
+## Release status
 
-```bash
-mlx-serve run gemma4          # downloads Gemma 4 E4B, serves it and chats right here
-mlx-serve pull gemma4:26b     # download only, resumable
-mlx-serve serve               # serve everything you downloaded; models load when asked for
-```
+The release contains the **Apple Silicon Mac app**, build provenance, and checksums. It does **not** contain models, the MLX-Gen Python environment, stable-diffusion.cpp, FFmpeg, or their external prerequisites. Existing installations with the documented runtimes can use the app; a new machine needs runtime provisioning. See the [release guide](docs/releases/managed-media-preview-2026.11.06.1.md).
 
-The server listens on `http://localhost:11234`. Point any OpenAI, Anthropic or Ollama client at it, or open that address in a browser for the built-in web console.
+The application is an **ad-hoc signed personal build**, not an Apple-notarized distribution. Its declared minimum is macOS 26.2; compatibility across that whole OS range has not been tested. The release audit machine reports macOS 27.0.1. No instructions to disable macOS security controls are provided.
 
-### iPhone
+The built-in updater still targets `ddalcu/mlx-serve`. An upstream update can replace this fork's integration. Use this repository's release page to identify this preview; it has not gained a separate updater channel.
 
-[MLX-Serve](https://apps.apple.com/us/app/mlx-chat-local-ai/id6787603518) puts the same engine on your iPhone: chat with Gemma 4, clone your voice, and make pictures and music, all on the phone and offline. It needs an A17 Pro-class iPhone or newer with iOS 26.
+## Read the engineering work
 
-### Linux and Windows
+- [Case study: architecture, decisions, failures, results, and next steps](docs/portfolio-case-study.md)
+- [Detailed integration and validation record](docs/external-media-integration.md)
+- [Runtime prerequisites and reproduction boundaries](docs/releases/managed-media-preview-2026.11.06.1.md)
+- [GGML mixed-precision patch](patches/stable-diffusion-ggml-mixed-precision.patch) and [arithmetic regression checks](patches/ggml-mixed-precision-test.cpp)
+- [Upstream-oriented project reference](README.upstream.md), including the original project's installation and feature documentation
 
-Every release has Linux downloads for NVIDIA GPUs: x64 for RTX 20 to 50 cards, arm64 for DGX Spark, GH200 and Jetson Thor. On Windows with an NVIDIA card, one script builds it. Details are in [docs/building.md](docs/building.md#linux-and-windows-nvidia).
+## Attribution
 
-## What it does
-
-- **Coding agents on a local model.** `mlx-serve launch claude` starts Claude Code against your Mac, set up with the model's real context window. Codex, OpenCode, pi, Grok and others work the same way. [Integrations](docs/integrations.md)
-- **Pictures, video, music, speech and 3D.** FLUX.2, Qwen-Image, Krea, MOSS-Image, LTX-Video, MiniMax-H3, ACE-Step, YuE2, Qwen3-TTS with voice cloning, and Hunyuan3D, in the app or over HTTP. [The app](docs/app.md)
-- **Transcripts and meeting notes.** Speech to text in 30 languages, with word timings and who said what. The menu bar records a call and writes the notes. [API](docs/api.md#other-endpoints)
-- **Models bigger than your Mac.** GLM-5.3-Flash, MiMo-V2.6-Flash and DeepSeek-V4.1-Flash run on a 128 GB Mac by reading their experts from the SSD. Two Macs on a Thunderbolt 5 cable can run one model together, and Macs on your network can use each other's models. [CLI](docs/cli.md) · [FAQ](docs/faq.md#can-my-macs-share-models-over-the-network)
-- **An assistant that lives on your Mac.** Chat with your documents, talk to it hands-free, give agents a sandboxed shell and MCP tools, or schedule tasks in plain English. [The app](docs/app.md)
-- **The APIs your tools already use.** OpenAI chat, completions and Responses, Anthropic Messages and Ollama, all on one port, with streaming, tool calls, JSON schemas, vision and reasoning. [API](docs/api.md)
-
-## What can my Mac run?
-
-The app suggests a first model for your Mac's memory:
-
-| Memory | Suggested model |
-|---|---|
-| 16 GB | Gemma 4 E4B |
-| 18–24 GB | Gemma 4 12B |
-| 32 GB | Qwen 3.8 27B |
-| 36 GB | Qwen 3.8 27B 6-bit |
-| 48–64 GB | Qwen 3.8 27B 8-bit |
-| 96 GB and up | Qwen3.8-Flash-Next (125B, about 6B active per token) |
-| 128 GB | Also GLM-5.3-Flash, MiMo-V2.6-Flash and DeepSeek-V4.1-Flash, streamed from the SSD |
-| 256 GB | Also GLM-5.3 (744B), streamed from the SSD |
-
-Thousands more run too: any MLX model with a supported architecture, and any GGUF. The [tier list](https://mlxserve.com/llm-tier-list/) ranks the popular ones, and [docs/models.md](docs/models.md) lists every architecture.
-
-## Speed
-
-Decode speed in v26.11.1 on an M5 Ultra with 256 GB, on a code prompt, with speculative decoding on:
-
-| Model | Tokens per second |
-|---|---:|
-| Qwen3.6 35B-A3B, 4-bit | 421 |
-| Qwen3.8 27B, 4-bit | 243 |
-| Gemma 4 E4B, 4-bit | 200 |
-| Gemma 4 26B-A4B, 4-bit | 184 |
-| Qwen3.8-Flash-Next, 4.7 bits | 180 |
-
-On an M4 Max, the same models decode 10% to 51% faster than they did in v26.8. Every release is measured the same way in [benchmarks.md](benchmarks.md); speculative decoding and tuning are in [docs/performance.md](docs/performance.md).
-
-## Docs
-
-- [Integrations](docs/integrations.md): Claude Code, Codex, OpenCode, pi, Zed and more
-- [HTTP API](docs/api.md): OpenAI, Anthropic, Ollama and the media endpoints
-- [CLI and server flags](docs/cli.md)
-- [The Mac app](docs/app.md), with the media tour
-- [Supported models](docs/models.md)
-- Write a plugin without rebuilding the server: [model](docs/plugin-model.md), [media](docs/plugin-media.md), [quant](docs/plugin-quant.md)
-- [Performance and tuning](docs/performance.md)
-- [Building from source](docs/building.md) and [NVIDIA GPUs](docs/CUDA.md)
-- [FAQ](docs/faq.md) and the [changelog](CHANGELOG.md)
-
-## Build from source
-
-You need Xcode 26.2 or later and [Homebrew](https://brew.sh):
-
-```bash
-git clone --recurse-submodules https://github.com/ddalcu/mlx-serve && cd mlx-serve
-./app/build.sh
-```
-
-The script fetches the pinned Zig, builds MLX and llama.cpp, and signs the app ad hoc. There's no Python anywhere in the build. Server-only builds are in [docs/building.md](docs/building.md).
-
-## Community
-
-Questions, ideas and things you made: the [community chat on X](https://x.com/i/chat/group_join/g2108335256541741397/K38XS6aGRh) and [GitHub issues](https://github.com/ddalcu/mlx-serve/issues). Builds and deep dives go out on [YouTube](https://www.youtube.com/@DavidDalcu) and [X](https://x.com/ddalcu).
-
-## Thank you
-
-Thank you to the sponsors who back mlx-serve: @jcprichard, @skudinov, @davidfekke, @lojza3d, @cpko, @d-b, @alinselea, Johnny Dang and @R0xr1te. If it's useful to you, you can support it on [GitHub Sponsors](https://github.com/sponsors/ddalcu) or [Buy Me a Coffee](https://buymeacoffee.com/ddalcu). Nothing is paywalled: it's MIT now and stays MIT.
-
-Thank you also to everyone who sends code, reports and ideas. The [contributors page](https://github.com/ddalcu/mlx-serve/graphs/contributors) shows the code side, and the [changelog](CHANGELOG.md) thanks people release by release.
-
-## Acknowledgements
-
-mlx-serve builds on [MLX](https://github.com/ml-explore/mlx), [mlx-c](https://github.com/ml-explore/mlx-c), [mlx-lm](https://github.com/ml-explore/mlx-lm), [llama.cpp](https://github.com/ggerganov/llama.cpp), [antirez/ds4](https://github.com/antirez/ds4), [mlx-stream](https://github.com/davidtai/mlx-stream), [Sushi](https://github.com/beamivalice/sushi), [jinja.cpp](https://github.com/wangzhaode/jinja.cpp), [nlohmann/json](https://github.com/nlohmann/json), [stb_image](https://github.com/nothings/stb), [libwebp](https://chromium.googlesource.com/webm/libwebp), [Hugging Face tokenizers](https://github.com/huggingface/tokenizers) and [Zig](https://ziglang.org). It runs the open models their authors published, and the app uses the [Anthropic](https://github.com/anthropics/swift-sdk) and [MCP](https://github.com/modelcontextprotocol/swift-sdk) Swift SDKs.
-
-Licenses and required notices are in [NOTICE](NOTICE). If we missed you, please open a PR.
-
-## Star history
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/star-history-dark.svg">
-  <img alt="GitHub star history for ddalcu/mlx-serve" src="docs/star-history.svg">
-</picture>
-
-<!-- regenerate with: python3 scripts/star-chart.py -->
-
-[![ddalcu%2Fmlx-serve | Trendshift](https://trendshift.io/api/badge/repositories/43025)](https://trendshift.io/repositories/43025)
-
-If mlx-serve is useful to you, a star helps other people find it.
-
-## License
-
-MIT, see [LICENSE](LICENSE). Bundled third-party code keeps its own license: [NOTICE](NOTICE) lists it with the required attributions, and [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) has the Apache license text.
+The integration builds on [MLX-Serve](https://github.com/ddalcu/mlx-serve), [MLX-Gen](https://github.com/lpalbou/mlx-gen), its [mflux foundation](https://github.com/filipstrand/mflux), [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp), [ggml](https://github.com/leejet/ggml), [MLX](https://github.com/ml-explore/mlx), and [FFmpeg](https://ffmpeg.org/). Model authors and checkpoint packagers retain their own rights and licenses. This fork's scope is integration and validation, not model training. Existing [LICENSE](LICENSE), [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0), and [NOTICE](NOTICE) files remain in place and in the app bundle.

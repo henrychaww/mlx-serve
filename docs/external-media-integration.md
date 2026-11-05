@@ -1,5 +1,7 @@
 # External media integration
 
+Current portfolio release: [case study](portfolio-case-study.md) and [preview prerequisites](releases/managed-media-preview-2026.11.06.1.md). This is the detailed record of the locally verified integration, including unsuccessful approaches. Raw temporary logs were removed during the requested development cleanup; results below are the recorded November 5 observations, not a newly rerun test suite.
+
 This personal build adds on-demand SeedVR2 upscaling through MLX-Gen and LTX 2.5 GGUF video through stable-diffusion.cpp. It does not add support for arbitrary GGUF, image, video, audio, or 3D model architectures. Model weights are read from their existing paths; the application does not copy them into runtime folders.
 
 The runtimes currently installed on the test Mac are:
