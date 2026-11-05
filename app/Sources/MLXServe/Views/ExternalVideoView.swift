@@ -85,7 +85,7 @@ struct ExternalVideoView: View {
                 }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
             }.frame(minWidth: 340, idealWidth: 380)
             VStack {
-                if let player { VideoPlayer(player: player) }
+                if let player { AVPlayerViewRepresentable(player: player) }
                 else { ContentUnavailableView("Generated video", systemImage: "film") }
             }.padding(16).frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -121,8 +121,8 @@ struct ExternalVideoView: View {
 
     private func chooseOutput() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "generated.avi"
-        if let avi = UTType(filenameExtension: "avi") { panel.allowedContentTypes = [avi] }
+        panel.nameFieldStringValue = "generated.mp4"
+        panel.allowedContentTypes = [.mpeg4Movie]
         if AppActivation.runModal(panel) == .OK { output = panel.url }
     }
 
@@ -176,11 +176,16 @@ struct ExternalVideoView: View {
             message = "Could not determine the model's memory requirements."
             return
         }
+        guard output.pathExtension.lowercased() == "mp4", let helper = ExternalVideoConversion.installedExecutable else {
+            message = "Choose an MP4 output and make sure the video playback helper is installed."
+            return
+        }
+        let conversion = ExternalVideoConversion(executable: helper, source: FileManager.default.temporaryDirectory.appendingPathComponent("mlx-video-\(UUID().uuidString).avi"))
         do {
             let args = try ExternalMediaCommand.ltx25(model: model.path, vae: vae.path, audioVae: audioVae.path,
-                textEncoder: encoder.path, prompt: prompt, output: output.path, width: width, height: height, frames: frames,
+                textEncoder: encoder.path, prompt: prompt, output: conversion.source.path, width: width, height: height, frames: frames,
                 steps: steps, guidance: guidance, initialImage: initialImage?.path)
-            media.start(kind: .video, executable: engine, arguments: args, output: output, server: server, minimumFreeBytes: minimum)
+            media.start(kind: .video, executable: engine, arguments: args, output: output, server: server, minimumFreeBytes: minimum, conversion: conversion)
         } catch {
             message = error.localizedDescription
         }

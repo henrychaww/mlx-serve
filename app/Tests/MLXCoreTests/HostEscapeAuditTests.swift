@@ -38,6 +38,8 @@ final class HostEscapeAuditTests: XCTestCase {
             "HostMCPSpawner's login zsh, used only when the Agent Sandbox is OFF. Compiled out under MAS_BUILD.",
         "PluginManager.swift":
             "Model Browser ▸ Plugins: git clone/fetch, xcode-select, the catalog's build.sh (the pinned Zig compile) and this app's `mlx-serve plugin install` on the host. Needs the Xcode Command Line Tools, so it cannot work in the App Sandbox; the pane is not yet hidden under MAS_BUILD.",
+        "ExternalVideoConversion.swift":
+            "FFmpeg converts external GGUF media to macOS-decodable MP4. Helper discovery returns nil under MAS_BUILD, where host runtimes are unavailable. It is reached only by the explicit external Video form, never agent tools; ManagedMediaProcess owns both stages without a shell and stops on cancellation/quit.",
         "ProcessRegistry.swift":
             "login zsh for the agent's host shell tool. Guest-only under MAS_BUILD (Phase 4).",
         "SandboxSSH.swift":

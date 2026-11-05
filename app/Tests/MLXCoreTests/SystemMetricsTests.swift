@@ -27,6 +27,7 @@ final class SystemMetricsTests: XCTestCase {
     // MARK: - vm_stat
 
     func testAvailableBytesMatchesVmStat() throws {
+        let before = SystemMetrics.availableBytes()
         let text = try shell("/usr/bin/vm_stat", [])
 
         var pageSize = 4096
@@ -41,11 +42,15 @@ final class SystemMetricsTests: XCTestCase {
         let actual = SystemMetrics.availableBytes()
 
         XCTAssertGreaterThan(actual, 0, "availableBytes returned 0")
-        // Memory moves between the two samples; allow 5% or 256 MB, whichever is larger.
+        XCTAssertGreaterThan(before, 0, "availableBytes returned 0")
+        // Bracket the subprocess sample: a GPU job can allocate gigabytes while
+        // vm_stat launches. Keep the same 5%/256 MB numerical tolerance, applied
+        // outside the observed host range rather than to one later snapshot.
         let tolerance = max(UInt64(Double(expected) * 0.05), 256 * 1024 * 1024)
-        let delta = actual > expected ? actual - expected : expected - actual
+        let lower = min(before, actual), upper = max(before, actual)
+        let delta = expected < lower ? lower - expected : (expected > upper ? expected - upper : 0)
         XCTAssertLessThan(delta, tolerance,
-                          "vm_stat says \(expected / (1 << 20)) MB, host_statistics64 says \(actual / (1 << 20)) MB")
+                          "vm_stat says \(expected / (1 << 20)) MB, host_statistics64 brackets \(before / (1 << 20))–\(actual / (1 << 20)) MB")
     }
 
     /// `vm_stat`'s `Pages free` is `free_count - speculative_count`. Forgetting
