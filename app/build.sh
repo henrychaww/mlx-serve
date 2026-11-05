@@ -68,6 +68,10 @@ fi
 
 cd "$SCRIPT_DIR"
 
+# Reuse a previously staged cache without duplicating package checkouts/artifacts.
+SWIFT_BUILD_ROOT="${SWIFT_SCRATCH_PATH:-$SCRIPT_DIR/.build}"
+SWIFT_PATH_FLAGS=(--scratch-path "$SWIFT_BUILD_ROOT")
+
 # Preflight: make sure the pinned submodules (lib/ds4, lib/mlx-src, lib/mlxc-src)
 # are actually checked out at their pins before anything links against them. A
 # drifted engine submodule otherwise fails the Zig build with a cryptic
@@ -187,8 +191,8 @@ fi
 # whole-module type-check, Zig's single LLVM module) and neither reads the
 # other's output, so running them side by side makes the build as long as the
 # slower half instead of both. Output goes to a log, shown after Swift finishes.
-ZIG_LOG="$SCRIPT_DIR/.build/zig-build.log"
-mkdir -p "$SCRIPT_DIR/.build"
+ZIG_LOG="$SWIFT_BUILD_ROOT/zig-build.log"
+mkdir -p "$SWIFT_BUILD_ROOT"
 # Pinned Zig release, staged by scripts/fetch-zig.sh (see build.zig's version gate).
 ZIG="$PROJECT_ROOT/.zig-toolchain/zig"
 # The zig link resolves the SDK via xcrun. Prefer the CommandLineTools SDK
@@ -257,19 +261,19 @@ if [ "$FAST_DEV" = "1" ]; then
 else
     SWIFT_CONFIG=release
 fi
-SWIFT_BUILD_FLAGS=(-c "$SWIFT_CONFIG" ${SWIFT_MODE_FLAGS[@]+"${SWIFT_MODE_FLAGS[@]}"})
+SWIFT_BUILD_FLAGS=("${SWIFT_PATH_FLAGS[@]}" -c "$SWIFT_CONFIG" ${SWIFT_MODE_FLAGS[@]+"${SWIFT_MODE_FLAGS[@]}"})
 # SwaTexRender's generated `Bundle.module` looks for its KaTeX fonts beside the
 # .app, which codesign refuses to seal — so it can never find them in a bundle
 # we assemble by hand and traps on the first equation (issue #233). Patch the
 # lookup before compiling; the script is idempotent and fails loudly.
-swift package resolve
-bash "$PROJECT_ROOT/scripts/patch-swatex-font-lookup.sh" "$SCRIPT_DIR/.build/checkouts/SwaTex"
+swift package "${SWIFT_PATH_FLAGS[@]}" resolve
+bash "$PROJECT_ROOT/scripts/patch-swatex-font-lookup.sh" "$SWIFT_BUILD_ROOT/checkouts/SwaTex"
 # No test step here, and never add one: this script is also the FAST_DEV
 # iteration loop (build, look, adjust — about two seconds when nothing
 # changed), and the Swift suite costs ~30s. Run `bash app/test.sh`
 # yourself before landing.
 echo "  swift build -c $SWIFT_CONFIG — a clean build takes several minutes, please wait..."
-SWIFT_LOG="$SCRIPT_DIR/.build/swift-build.log"
+SWIFT_LOG="$SWIFT_BUILD_ROOT/swift-build.log"
 SWIFT_START=$SECONDS
 # Live [N/M] step counter (in place on a terminal); the full output goes to the
 # log, and a failure prints its tail.
@@ -488,7 +492,7 @@ if [ "$STAGE_FRAMEWORKS" = "1" ]; then
     # .build/artifacts; embed the macOS slice so the shipped app resolves
     # @rpath/Ybrid*.framework at runtime (without this the app won't launch).
     for fwname in YbridOpus YbridOgg; do
-        fwsrc=$(find "$SCRIPT_DIR/.build/artifacts" -path "*macos-arm64*/$fwname.framework" -type d 2>/dev/null | head -1)
+        fwsrc=$(find "$SWIFT_BUILD_ROOT/artifacts" -path "*macos-arm64*/$fwname.framework" -type d 2>/dev/null | head -1)
         if [ -n "$fwsrc" ]; then
             cp -R "$fwsrc" "$CONTENTS/Frameworks/"
         else
@@ -559,15 +563,10 @@ echo "→ Code signing..."
 # Fix permissions for signing
 chmod -R u+w "$APP"
 
-# Strip extended attributes before signing. An asset added to
-# Sources/MLXServe/Resources by dragging it out of Finder carries
-# com.apple.FinderInfo and com.apple.quarantine, and codesign refuses the whole
-# bundle with "resource fork, Finder information, or similar detritus not
-# allowed" — three minutes into a build, naming the BINARY rather than the file
-# that actually brought the metadata in. Cleaning the staged bundle fixes the
-# class rather than one asset; `tests/test_resource_xattrs.sh` keeps the
-# checked-in copies clean too, so the failure is caught before a build starts.
-xattr -cr "$APP" 2>/dev/null || true
+# Only remove signing-incompatible Finder metadata. Preserve quarantine,
+# provenance, and all other security attributes on the staged application.
+xattr -dr com.apple.FinderInfo "$APP" 2>/dev/null || true
+xattr -dr com.apple.ResourceFork "$APP" 2>/dev/null || true
 
 # Hardened runtime requires a real Team ID — skip it for ad-hoc ("-") signing,
 # otherwise dyld rejects framework loads with "different Team IDs".
@@ -603,7 +602,7 @@ fi
 
 # The metallib is signed on BOTH paths. It is not Mach-O, so codesign stores its
 # signature in the com.apple.cs.CodeDirectory EXTENDED ATTRIBUTE — which the
-# `xattr -cr` strip above wipes on every build. The dylibs (embedded
+# re-staging can replace. The dylibs (embedded
 # LC_CODE_SIGNATURE) and the .framework bundles (_CodeSignature) survive it; the
 # metallib does not, and an unsigned nested code object fails the whole-bundle
 # seal ("code object is not signed at all"), leaving an .app that will not open.
@@ -648,6 +647,12 @@ if [ "$FAST_DEV" = "1" ]; then
     echo "=== Fast build complete (v$MLX_SERVE_VERSION, swift $SWIFT_CONFIG, mlx-serve ${ZIG_OPT[0]#-Doptimize=}) ==="
     echo "App: $APP"
     echo "Not notarized, no DMG — run without FAST_DEV to ship."
+    exit 0
+fi
+
+# A local optimized application needs no installer/archive duplicates.
+if [ "${APP_ONLY:-0}" = "1" ]; then
+    echo "App-only build complete: $APP (Swift $SWIFT_CONFIG, server ${ZIG_OPT[0]#-Doptimize=})"
     exit 0
 fi
 

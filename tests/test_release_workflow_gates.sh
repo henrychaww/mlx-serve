@@ -28,6 +28,11 @@ def check(cond, msg):
         print(f"FAIL {msg}")
         FAIL = 1
 
+local_build = open("app/build.sh").read()
+check('xattr -cr "$APP"' not in local_build, "local packaging preserves quarantine and other security attributes")
+check('SWIFT_SCRATCH_PATH' in local_build, "local packaging can reuse an existing Swift build cache")
+
+check('"${APP_ONLY:-0}" = "1"' in local_build, "optimized personal builds can omit installer archives")
 wf = yaml.safe_load(open(".github/workflows/release.yml"))
 
 # YAML 1.1 parses the bare key `on` as boolean True.
