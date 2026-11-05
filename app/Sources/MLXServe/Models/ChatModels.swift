@@ -1082,7 +1082,7 @@ struct LocalModel: Identifiable, Hashable {
     var isDownloading: Bool = false
 
     var isSupportedArchitecture: Bool {
-        supportedModelTypes.contains(modelType) || isMediaModelType(modelType)
+        ["external_ltx25", "external_seedvr2"].contains(modelType) || supportedModelTypes.contains(modelType) || isMediaModelType(modelType)
             || OutsidePlugins.served.chat.contains(modelType) || OutsidePlugins.served.media.contains(modelType)
     }
 
@@ -1127,7 +1127,7 @@ struct LocalModel: Identifiable, Hashable {
     /// no longer flags them "Unsupported".
     var isChatPickable: Bool {
         guard defect == nil, !isDownloading else { return false }
-        return kind == .base && isSupportedArchitecture && modelType != "bert" && modelType != "embedding_gemma2" && modelType != "qwen3_asr" && modelType != "qwen3_forced_aligner" && !isMediaModelType(modelType)
+        return kind == .base && isSupportedArchitecture && !["external_ltx25", "external_seedvr2"].contains(modelType) && modelType != "bert" && modelType != "embedding_gemma2" && modelType != "qwen3_asr" && modelType != "qwen3_forced_aligner" && !isMediaModelType(modelType)
             && !OutsidePlugins.served.media.contains(modelType)
     }
 

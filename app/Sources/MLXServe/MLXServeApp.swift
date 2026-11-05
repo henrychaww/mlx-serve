@@ -50,7 +50,7 @@ struct MLXCoreApp: App {
     /// Built at first body, as `@StateObject` did: `AppState.init` needs `NSApp`,
     /// which does not exist yet during `App.init`.
     @MainActor private final class Roots {
-        lazy var appState = AppState()
+        lazy var appState = AppState(startServerAtLaunch: ProcessInfo.processInfo.environment["MLX_SERVE_TEST_NO_AUTOSTART"] != "1")
         lazy var hfSearch = HFSearchService()
     }
     @Environment(\.openWindow) private var openWindow

@@ -1576,7 +1576,9 @@ private struct ModelBrowserRow: View {
             appState.refreshModels()
             server.rescanModels()
         }
-        if let b = mediaBundle {
+        if ExternalModelCatalog.seedVR2Repos.contains(model.id) {
+            downloads.startSeedVR2(repoId: model.id, onFinish: finished)
+        } else if let b = mediaBundle {
             downloads.startBundle(b, onFinish: finished)
         } else {
             downloads.start(repoId: model.id, onFinish: finished)
@@ -1759,7 +1761,7 @@ private struct GgufQuantMenu: View {
             remote: remote,
             // Recursive paths so a sharded quant's nested shards are seen and an
             // incomplete split reads as available (resume), not on-disk.
-            onDisk: downloads.downloadedGgufPaths(repoId: repoId)
+            onDisk: ExternalModelCatalog.videoTransformers(repo: repoId, files: downloads.downloadedGgufPaths(repoId: repoId))
         )
     }
 
@@ -1779,11 +1781,15 @@ private struct GgufQuantMenu: View {
             failed: state?.status == .failed,
             hasPartial: downloads.hasPartialDownload(repoId)
         )
-        let only = ModelBrowserUse.shelfPrimaryUse(onDisk: m.onDisk.compactMap(path(of:)), selected: appState.selectedModelPath)
+        let isExternalVideo = ExternalModelCatalog.ltx25GGUFRepos.contains(repoId)
+        let only = isExternalVideo ? nil : ModelBrowserUse.shelfPrimaryUse(onDisk: m.onDisk.compactMap(path(of:)), selected: appState.selectedModelPath)
         ShelfMenu(label: label, usePath: only, useName: m.onDisk.first?.label ?? repoId) {
             if !m.onDisk.isEmpty {
                 Section("On this Mac") {
                     ForEach(m.onDisk) { quant in
+                        if isExternalVideo {
+                            Text("\(quant.label) — Video → GGUF")
+                        } else {
                         Button {
                             guard let p = path(of: quant) else { return }
                             Task { _ = await appState.useModelAndAwaitReady(atPath: p) }
@@ -1794,6 +1800,7 @@ private struct GgufQuantMenu: View {
                                             L10n.text(quant.label)),
                                 systemImage: selected ? "checkmark.circle.fill" : "checkmark"
                             )
+                        }
                         }
                     }
                 }
@@ -1831,7 +1838,7 @@ private struct GgufQuantMenu: View {
         }
         .task {
             guard !loaded else { return }
-            remote = await downloads.listGgufFiles(repoId: repoId)
+            remote = ExternalModelCatalog.videoTransformers(repo: repoId, files: await downloads.listGgufFiles(repoId: repoId))
             loaded = true
         }
         .alert("Delete Quant", isPresented: .init(

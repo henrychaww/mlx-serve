@@ -6,6 +6,54 @@ import XCTest
 /// dirs continue to resolve via the dual-scan fallback. No auto-migration —
 /// users redownload or move dirs manually.
 final class DownloadManagerLayoutTests: XCTestCase {
+    func testLTXComponentDownloadOnlyFetchesMissingWeights() {
+        let files: [[String: Any]] = [
+            ["path": "vae/ltx-2.5-video-vae-conv-bf16.safetensors", "type": "file", "size": 1],
+            ["path": "vae/ltx-2.5-audio-vae-bf16.safetensors", "type": "file", "size": 1],
+            ["path": "vae/config.json", "type": "file", "size": 1],
+            ["path": "text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors", "type": "file", "size": 1]
+        ]
+        let selection = FileSelection.ltx25Components(["ltx-2.5-audio-vae-bf16.safetensors"])
+        XCTAssertEqual(DownloadManager.selectNeededFiles(from: files, selection: selection).map(\.0), ["vae/ltx-2.5-audio-vae-bf16.safetensors"])
+    }
+
+    func testUncensoredLTXSelectionUsesOnlyItsMissingFile() {
+        let files: [[String: Any]] = [
+            ["path": "split/vae/ltx25_uncensored_audio_vae.safetensors", "type": "file", "size": 1],
+            ["path": "split/vae/ltx25_uncensored_video_vae.safetensors", "type": "file", "size": 1],
+            ["path": "split/diffusion_models/ltx25_uncensored_v1.1-fp8.safetensors", "type": "file", "size": 1]
+        ]
+        let selection = FileSelection.ltx25Components(["ltx25_uncensored_audio_vae.safetensors"], profile: .uncensored)
+        XCTAssertEqual(DownloadManager.selectNeededFiles(from: files, selection: selection).map(\.0), ["split/vae/ltx25_uncensored_audio_vae.safetensors"])
+        let vaeFiles: [[String: Any]] = [["path": "vae/ltx-2.5-video-vae-conv-bf16.safetensors", "type": "file", "size": 1]]
+        let compatible = FileSelection.ltx25Components(["ltx-2.5-video-vae-conv-bf16.safetensors"], profile: .uncensored, repo: "unsloth/LTX-2.5-GGUF")
+        XCTAssertEqual(DownloadManager.selectNeededFiles(from: vaeFiles, selection: compatible).map(\.0), ["vae/ltx-2.5-video-vae-conv-bf16.safetensors"])
+        let encoderFiles: [[String: Any]] = [["path": "split/text_encoders/gguf/gemma4_12b_ltx25_uncensored-Q4_K_M.gguf", "type": "file", "size": 1]]
+        let encoder = FileSelection.ltx25Components(["gemma4_12b_ltx25_uncensored-Q4_K_M.gguf"], profile: .uncensored)
+        XCTAssertEqual(DownloadManager.selectNeededFiles(from: encoderFiles, selection: encoder).map(\.0), ["split/text_encoders/gguf/gemma4_12b_ltx25_uncensored-Q4_K_M.gguf"])
+    }
+
+    func testSeedVR2NeverReplacesExistingFilesWithDifferentSize() {
+        XCTAssertFalse(DownloadManager.refuseExistingFile(selection: .seedVR2, existingSize: nil, expectedSize: 10))
+        XCTAssertFalse(DownloadManager.refuseExistingFile(selection: .seedVR2, existingSize: 10, expectedSize: 10))
+        XCTAssertTrue(DownloadManager.refuseExistingFile(selection: .seedVR2, existingSize: 9, expectedSize: 10))
+        XCTAssertFalse(DownloadManager.refuseExistingFile(selection: .chatDefault, existingSize: 9, expectedSize: 10))
+    }
+
+    func testSeedVR2DownloadContainsOnlyBothRequiredComponents() {
+        let files: [[String: Any]] = [
+            ["path": "transformer/0.safetensors", "type": "file", "size": 1],
+            ["path": "transformer/model.safetensors.index.json", "type": "file", "size": 1],
+            ["path": "vae/0.safetensors", "type": "file", "size": 1],
+            ["path": "vae/model.safetensors.index.json", "type": "file", "size": 1],
+            ["path": "alternate/huge.safetensors", "type": "file", "size": 1],
+            ["path": "unrelated.safetensors", "type": "file", "size": 1],
+            ["path": "transformer/../../outside.safetensors", "type": "file", "size": 1]
+        ]
+        let paths = Set(DownloadManager.selectNeededFiles(from: files, selection: .seedVR2).map(\.0))
+        XCTAssertEqual(paths, ["transformer/0.safetensors", "transformer/model.safetensors.index.json", "vae/0.safetensors", "vae/model.safetensors.index.json"])
+    }
+
     private var tempRoot: String!
 
     override func setUpWithError() throws {

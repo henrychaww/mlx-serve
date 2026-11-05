@@ -13,6 +13,8 @@ struct ImageGenView: View {
     @EnvironmentObject var appState: AppState
 
     @State private var prompt: String = ""
+    @State private var imageOperation = 0
+    @State private var externalUpscaleModel: URL?
     @State private var showEnhance = false
     /// Selection and focus are read by the image tiles: a click on one drops
     /// its name where the caret is, or on the end when the editor is not
@@ -83,7 +85,16 @@ struct ImageGenView: View {
         // No window-sized floor: this is a PAGE of the chat window now, and a
         // root minimum wider than the detail column overflows it and clips
         // both edges. Small windows shrink the preview side instead.
-        readyView
+        VStack(spacing: 0) {
+            Picker("Operation", selection: $imageOperation) {
+                Text("Generate").tag(0)
+                Text("Upscale").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 280)
+            .padding(12)
+            if imageOperation == 0 { readyView } else { ExternalUpscaleView(initialModel: externalUpscaleModel).environmentObject(appState.externalMedia) }
+        }
         .onAppear {
             if !didHydrate {
                 hydrating = true
@@ -421,7 +432,9 @@ struct ImageGenView: View {
             downloads: downloads,
             onDownloadFinished: { appState.refreshModels() },
             persist: persist,
-            accessory: keepResidentToggle)
+            accessory: keepResidentToggle,
+            externalModels: ExternalModelCatalog.chooserModels(appState.localModels, type: "external_seedvr2"),
+            onSelectExternal: { picked in externalUpscaleModel = URL(fileURLWithPath: picked.path); imageOperation = 1 })
         .onChange(of: model) { _, _ in guard !hydrating else { return }; applyModelDefaults() }
     }
 

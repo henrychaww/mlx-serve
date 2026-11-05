@@ -271,6 +271,7 @@ class DownloadManager: ObservableObject {
         return entries.compactMap { file -> (String, Int64)? in
             guard let path = file["path"] as? String,
                   let ftype = file["type"] as? String, ftype == "file" else { return nil }
+            guard path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { return nil }
             // Depth gate. Variant: exactly the named subfolder's own files
             // (`4bit/config.json`), never anything deeper. Chat default:
             // top-level files + the pack's `drafter/` + the MTP sidecar (native
@@ -290,7 +291,9 @@ class DownloadManager: ObservableObject {
                     || indexedShards.contains(path) else { return nil }
             }
             let ext = (path as NSString).pathExtension.lowercased()
-            guard neededExtensions.contains(ext) || (path as NSString).lastPathComponent == "chat_template.jinja" else { return nil }
+            guard neededExtensions.contains(ext) || (ext == "gguf" && selection.requiredPaths.contains(path)) || (path as NSString).lastPathComponent == "chat_template.jinja" else { return nil }
+            if !selection.requiredPaths.isEmpty && !selection.requiredPaths.contains(path) { return nil }
+            if !selection.includePrefixes.isEmpty && !selection.includePrefixes.contains(where: { path.hasPrefix($0) }) { return nil }
             if Self.isTorchShadowWeight(path) { return nil }
             // Per-bundle junk filter.
             if selection.excludeSubstrings.contains(where: { path.contains($0) }) { return nil }
@@ -301,6 +304,11 @@ class DownloadManager: ObservableObject {
             let size = file["size"] as? Int64 ?? (file["size"] as? Int).map { Int64($0) } ?? 0
             return (path, size)
         }
+    }
+
+    nonisolated static func refuseExistingFile(selection: FileSelection, existingSize: Int64?, expectedSize: Int64) -> Bool {
+        guard selection.preserveExisting, let existingSize else { return false }
+        return expectedSize <= 0 || existingSize != expectedSize
     }
 
     /// Path of an existing model on disk. Prefers the new 2-level layout; falls
@@ -738,6 +746,12 @@ class DownloadManager: ObservableObject {
     /// at least one non-trivial .gguf" — they ship a single artifact, not the
     /// MLX safetensors tree.
     func isReady(_ repoId: String) -> Bool {
+        if ExternalModelCatalog.seedVR2Repos.contains(repoId) {
+            return readRoots.contains { root in
+                let path = Self.newLayoutDir(rootDir: root, repoId: repoId)
+                return ExternalModelCatalog.seedVR2Ready(at: URL(fileURLWithPath: path))
+            }
+        }
         guard let modelDir = existingModelDir(for: repoId) else { return false }
         let fm = FileManager.default
 
@@ -849,6 +863,9 @@ class DownloadManager: ObservableObject {
                     NSLocalizedDescriptionKey: "No downloadable files in \(repoId). This repo may keep its models in subfolders — pick a quantization from the model's menu.",
                 ])
             }
+            guard selection.requiredPaths.isSubset(of: Set(neededFiles.map(\.0))) else {
+                throw NSError(domain: "MLXServe.Download", code: 3, userInfo: [NSLocalizedDescriptionKey: "The repository is missing a required video component."])
+            }
             try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
 
             let totalSize = neededFiles.reduce(Int64(0)) { $0 + $1.1 }
@@ -869,6 +886,12 @@ class DownloadManager: ObservableObject {
                 // Create subdirectories if needed
                 let parentDir = (destPath as NSString).deletingLastPathComponent
                 try? FileManager.default.createDirectory(atPath: parentDir, withIntermediateDirectories: true)
+
+                let exists = FileManager.default.fileExists(atPath: destPath)
+                let existingSize = (try? FileManager.default.attributesOfItem(atPath: destPath)[.size] as? NSNumber)?.int64Value
+                if Self.refuseExistingFile(selection: selection, existingSize: exists ? (existingSize ?? -1) : nil, expectedSize: fileSize) {
+                    throw NSError(domain: "MLXServe.Download", code: 2, userInfo: [NSLocalizedDescriptionKey: "An existing file differs from the download: \(filePath). It was left untouched."])
+                }
 
                 // Skip if already exists with right size
                 if let attrs = try? FileManager.default.attributesOfItem(atPath: destPath),
@@ -989,6 +1012,37 @@ class DownloadManager: ObservableObject {
             onFinish()
         }
         activeTasks[repoId] = task
+    }
+
+    /// SeedVR2 has two nested weight components and must not use the chat download filter.
+    func startSeedVR2(repoId: String, onFinish: @escaping @MainActor () -> Void) {
+        guard ExternalModelCatalog.seedVR2Repos.contains(repoId), activeTasks[repoId] == nil else { return }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.download(repoId: repoId, selection: .seedVR2, destDirOverride: self.newLayoutDir(for: repoId))
+            if Task.isCancelled { self.downloads.removeValue(forKey: repoId) }
+            self.activeTasks.removeValue(forKey: repoId)
+            onFinish()
+        }
+        activeTasks[repoId] = task
+    }
+
+    func startLTX25Components(profile: ExternalVideoComponents.Profile, names: Set<String>, onFinish: @escaping @MainActor () -> Void) {
+        let valid = Set(profile.paths.map { ($0 as NSString).lastPathComponent })
+        let repos = profile.sources.filter { names.contains(($0.path as NSString).lastPathComponent) }
+            .map(\.repo).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        guard !names.isEmpty, names.isSubset(of: valid), repos.allSatisfy({ activeTasks[$0] == nil }) else { return }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            for repo in repos {
+                await self.download(repoId: repo, selection: .ltx25Components(names, profile: profile, repo: repo), destDirOverride: self.newLayoutDir(for: repo))
+                if Task.isCancelled || self.downloads[repo]?.status != .completed { break }
+            }
+            if Task.isCancelled { for repo in repos { self.downloads.removeValue(forKey: repo) } }
+            for repo in repos { self.activeTasks.removeValue(forKey: repo) }
+            onFinish()
+        }
+        for repo in repos { activeTasks[repo] = task }
     }
 
     // MARK: - Speculation gems (the Model Settings socket)
@@ -1894,6 +1948,12 @@ class DownloadManager: ObservableObject {
     nonisolated static func makeLocalModels(atDir dirPath: String, displayName: String, idKey: String, source: LocalModelSource) -> [LocalModel] {
         let resolved = (dirPath as NSString).resolvingSymlinksInPath
         let entries = (try? FileManager.default.contentsOfDirectory(atPath: resolved)) ?? []
+        if ExternalModelCatalog.seedVR2Ready(at: URL(fileURLWithPath: resolved)) {
+            let size = directorySize(resolved)
+            return [LocalModel(id: "\(source.rawValue):\(idKey)", name: displayName, path: resolved,
+                sizeFormatted: MemoryInfo.format(Int64(size)), modelType: "external_seedvr2", source: source,
+                kind: .base, sizeBytes: Int64(size))]
+        }
 
         // GGUF: one entry per servable quant (SHARD GROUP), sorted so the order
         // is stable across filesystems. `ggufQuantPaths` walks subfolders (so a
@@ -1907,13 +1967,23 @@ class DownloadManager: ObservableObject {
         // an author-dir call finds nothing and the discovery walk recurses into
         // it instead of merging sibling repos. Only COMPLETE quants (every shard
         // present) become models — an interrupted split stays a resumable partial.
-        let quantPaths = ggufQuantPathsForModelDir(resolved)
+        var quantPaths = ggufQuantPathsForModelDir(resolved)
+        for folder in ["distilled", "split/diffusion_models"] {
+            let nestedDir = (resolved as NSString).appendingPathComponent(folder)
+            for name in ggufQuantFiles(inDir: nestedDir) {
+                let relative = folder + "/" + name
+                if ExternalGGUF.isLTX25(at: URL(fileURLWithPath: (resolved as NSString).appendingPathComponent(relative))) {
+                    quantPaths.append(relative)
+                }
+            }
+        }
         if !quantPaths.isEmpty {
             let complete = GgufQuant.groupQuants(quantPaths).filter { $0.isComplete }
             return complete.compactMap { quant -> LocalModel? in
                 let primaryBase = (quant.filename as NSString).lastPathComponent
-                guard let modelType = ggufModelType(forBasename: primaryBase) else { return nil }
                 let primaryPath = (resolved as NSString).appendingPathComponent(quant.filename)
+                guard let fallbackType = ggufModelType(forBasename: primaryBase) else { return nil }
+                let modelType = ExternalGGUF.isLTX25(at: URL(fileURLWithPath: primaryPath)) ? "external_ltx25" : fallbackType
                 // Size = the whole quant (sum across every shard on disk).
                 // resolvedFileSize follows symlinks so an HF-cached quant reports
                 // its blob size, not the ~76 B link size.

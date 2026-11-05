@@ -257,6 +257,7 @@ class AppState: ObservableObject {
     @Published var documentIndexes: [UUID: DocumentIndex] = [:]
     let testServer = TestServer()
     lazy var imageGen = ImageGenService()
+    lazy var externalMedia = ExternalMediaService()
     /// `mlx-serve worker` while Settings ▸ Cluster makes this Mac a worker.
     let clusterWorker = ClusterWorker()
     lazy var videoGen = VideoGenService()

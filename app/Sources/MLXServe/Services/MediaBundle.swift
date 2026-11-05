@@ -12,6 +12,9 @@ struct FileSelection: Equatable {
     /// Skip any file whose path contains one of these (belt-and-suspenders for
     /// junk a recursive scan would otherwise grab).
     var excludeSubstrings: [String] = []
+    var includePrefixes: [String] = []
+    var preserveExisting: Bool = false
+    var requiredPaths: Set<String> = []
     /// When non-nil, among `.safetensors` files keep ONLY these basenames. The
     /// LTX allowlist (`transformer-dev`/`connector`/`vae_decoder`) — skips the
     /// LoRAs, upscalers, and alternate transformers. Non-safetensors (json/txt)
@@ -31,6 +34,13 @@ struct FileSelection: Equatable {
     static let chatDefault = FileSelection()
     /// The pack without its `drafter/` (a drafter socket switched off).
     static let chatWithoutDrafter = FileSelection(excludeSubstrings: [DrafterGems.packFolder + "/"])
+    static let seedVR2 = FileSelection(recursive: true, includePrefixes: ["transformer/", "vae/"], preserveExisting: true)
+
+    static func ltx25Components(_ names: Set<String>, profile: ExternalVideoComponents.Profile = .standard, repo: String? = nil) -> FileSelection {
+        let paths = Set(profile.sources.filter { $0.repo == (repo ?? profile.repo) && names.contains(($0.path as NSString).lastPathComponent) }.map(\.path))
+        return FileSelection(recursive: true, preserveExisting: true,
+                      requiredPaths: paths, keepSafetensors: names)
+    }
 
     static func packFolder(_ folder: String) -> FileSelection {
         FileSelection(packFolder: folder)

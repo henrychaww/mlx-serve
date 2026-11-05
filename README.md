@@ -2,7 +2,11 @@
 
 # MLX-Serve
 
-Run open models on your Mac: chat, coding agents, images, video, music, speech and 3D. One native app and one local server that speaks the OpenAI, Anthropic and Ollama APIs. It runs offline, needs no Python and no account, and it's MIT licensed.
+> **Portfolio fork, experimental:** This repository builds on [David Dalcu's MLX-Serve](https://github.com/ddalcu/mlx-serve). It explores managed external runtimes for SeedVR2 image upscaling and LTX 2.5 GGUF video with audio in the existing interface. The integration is a prototype, not a replacement-ready release or support for every model format. The upstream downloads and installation instructions below install the original app and do not include this fork's changes. See [integration status and limitations](docs/external-media-integration.md).
+>
+> The original project and its contributors retain their copyright and license notices. This fork does not include model weights.
+
+The upstream project runs open models on your Mac: chat, coding agents, images, video, music, speech and 3D. Its native app and local server speak the OpenAI, Anthropic and Ollama APIs. The upstream app runs offline without Python or an account. This fork's optional MLX-Gen runtime requires a Python environment. The project is MIT licensed.
 
 [![Release](https://img.shields.io/github/v/release/ddalcu/mlx-serve?style=flat-square&color=0071e3)](https://github.com/ddalcu/mlx-serve/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/ddalcu/mlx-serve/total?style=flat-square&color=30d158)](https://github.com/ddalcu/mlx-serve/releases)

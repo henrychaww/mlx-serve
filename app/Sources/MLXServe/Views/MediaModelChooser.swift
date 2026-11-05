@@ -34,6 +34,8 @@ struct MediaModelChooser<P: MediaModelSizing>: View {
     /// belongs there is the pane's own business (residency, for the ones that
     /// unload after generating), so it is handed in rather than built here.
     var accessory: AnyView? = nil
+    var externalModels: [LocalModel] = []
+    var onSelectExternal: (LocalModel) -> Void = { _ in }
 
     @EnvironmentObject var server: ServerManager
 
@@ -181,6 +183,13 @@ struct MediaModelChooser<P: MediaModelSizing>: View {
                     ForEach(onThisMac) { menuRow($0, showDownloadState: false) }
                 }
             }
+            if !externalModels.isEmpty {
+                Section("Other engines on this Mac") {
+                    ForEach(externalModels) { model in
+                        Button(model.name + (model.quantLabel.map { " · " + $0 } ?? "")) { onSelectExternal(model) }
+                    }
+                }
+            }
             if !lanModels.isEmpty {
                 Section("On Your Network") {
                     ForEach(lanModels, id: \.name) { m in
@@ -236,7 +245,9 @@ extension MediaModelChooser {
                      onDownloadFinished: @escaping () -> Void,
                      persist: @escaping () -> Void,
                      status: AnyView? = nil,
-                     accessory: AnyView? = nil) -> MediaModelChooser<P> {
+                     accessory: AnyView? = nil,
+                     externalModels: [LocalModel] = [],
+                     onSelectExternal: @escaping (LocalModel) -> Void = { _ in }) -> MediaModelChooser<P> {
         let featured = MediaModelPicks.featured(
             all,
             physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory,
@@ -269,6 +280,8 @@ extension MediaModelChooser {
             lanCapability: capability,
             status: status,
             accessory: accessory,
+            externalModels: externalModels,
+            onSelectExternal: onSelectExternal,
             onSelectLan: { id in
                 lanModel.wrappedValue = id
                 // Adopt the preset the request will be SHAPED by: catalogue

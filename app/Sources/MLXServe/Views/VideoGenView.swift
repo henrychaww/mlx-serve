@@ -18,6 +18,8 @@ struct VideoGenView: View {
     @EnvironmentObject var appState: AppState
 
     @State private var prompt: String = ""
+    @State private var videoEngine = 0
+    @State private var externalVideoModel: URL?
     @State private var showEnhance = false
     /// The editor's caret or selection, for dropping a reference marker where
     /// the user is typing. nil until the editor has had focus.
@@ -136,7 +138,16 @@ struct VideoGenView: View {
     var body: some View {
         // No window-sized floor — see ImageGenView: pages shrink their
         // preview side, they don't overflow the detail column.
-        readyView
+        VStack(spacing: 0) {
+            Picker("Video engine", selection: $videoEngine) {
+                Text("MLX").tag(0)
+                Text("GGUF").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 280)
+            .padding(12)
+            if videoEngine == 0 { readyView } else { ExternalVideoView(initialModel: externalVideoModel).environmentObject(appState.externalMedia) }
+        }
         .onAppear {
             if !didHydrate {
                 hydrating = true
@@ -455,7 +466,9 @@ struct VideoGenView: View {
             },
             persist: persist,
             status: AnyView(residencyRow),
-            accessory: keepResidentToggle)
+            accessory: keepResidentToggle,
+            externalModels: ExternalModelCatalog.chooserModels(appState.localModels, type: "external_ltx25"),
+            onSelectExternal: { picked in externalVideoModel = URL(fileURLWithPath: picked.path); videoEngine = 1 })
         .onChange(of: model) { _, _ in guard !hydrating else { return }; applyModelDefaults(); persist() }
     }
 

@@ -310,6 +310,7 @@ struct HFModel: Identifiable, Codable {
     /// to every diffusers repo on HF. nil (tree not checked / unfetchable)
     /// stays conservatively incompatible.
     var isCompatible: Bool {
+        if ExternalModelCatalog.seedVR2Repos.contains(id) || ExternalModelCatalog.ltx25GGUFRepos.contains(id) { return true }
         if isServedMediaRepo { return mediaStructureVerified == true }
         guard let tag = pipelineTag, !tag.isEmpty else { return true }
         return compatiblePipelineTags.contains(tag)
@@ -327,6 +328,7 @@ struct HFModel: Identifiable, Codable {
     /// internally, so flagging these "Unsupported architecture" was a false
     /// negative that hid legit downloads.
     var isSupportedArchitecture: Bool {
+        if ExternalModelCatalog.seedVR2Repos.contains(id) { return true }
         if isGgufRepo || isServedMediaRepo { return true }
         guard let tags, !tags.isEmpty else { return true }
         // HF tags every repo with its config.json model_type, so a served

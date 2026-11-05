@@ -13,6 +13,19 @@ class ServerManager: ObservableObject {
     /// Each model mid-load, by path, whichever client asked for it, while the server process is up.
     @Published private(set) var loadProgress: [String: LoadProgress] = [:]
     private var loadsInFlight = 0
+    private var externalMediaReserved = false
+
+    private struct ExternalMediaBusy: LocalizedError {
+        var errorDescription: String? { "Wait for the media job to finish before loading another local model." }
+    }
+
+    func reserveExternalMedia() -> Bool {
+        guard !externalMediaReserved, loadsInFlight == 0, loadProgress.isEmpty else { return false }
+        externalMediaReserved = true
+        return true
+    }
+
+    func releaseExternalMedia() { externalMediaReserved = false }
     /// `/props` `registry_generation` as last read (`modelListMoved`).
     private var seenRegistryGeneration: UInt64?
     private var loadProgressPoll: Task<Void, Never>?
@@ -62,6 +75,20 @@ class ServerManager: ObservableObject {
     /// nothing here holds it and nothing here can eject it.
     var residentModels: [ModelInfo] {
         allModels.filter { $0.loaded && $0.lanPeer == nil }
+    }
+
+    nonisolated static func externalMediaMayStart(status: ServerStatus, models: [ModelInfo]?, loading: Bool) -> Bool {
+        if status == .stopped { return !loading }
+        guard status == .running, !loading, let models else { return false }
+        return !models.contains { $0.loaded && $0.lanPeer == nil }
+    }
+
+    func canStartExternalMedia() async -> Bool {
+        guard status == .running else {
+            return Self.externalMediaMayStart(status: status, models: nil, loading: !loadProgress.isEmpty)
+        }
+        let models = try? await api.fetchModelList(port: port).0
+        return Self.externalMediaMayStart(status: status, models: models, loading: !loadProgress.isEmpty)
     }
 
     func lanModels(capability: String) -> [ModelInfo] {
@@ -136,6 +163,7 @@ class ServerManager: ObservableObject {
     }
 
     func start(modelPath: String, options: ServerOptions) {
+        guard !externalMediaReserved else { return }
         guard status != .running, status != .starting else { return }
 
         let resolvedModel = Self.launchModelPath(modelPath)
@@ -198,6 +226,7 @@ class ServerManager: ObservableObject {
     /// generates media before any chat server is up. One process hosts
     /// chat + image + audio + video under one memory budget.
     func startHeadless(modelsDir: String, options: ServerOptions) {
+        guard !externalMediaReserved else { return }
         guard status != .running, status != .starting else { return }
         currentModelPath = ""
         // `modelsDir` is the caller's primary root; the rest of the library's
@@ -718,6 +747,7 @@ class ServerManager: ObservableObject {
     /// the refreshed list sorts the new model first (`modelInfo` follows) and
     /// aliased requests route to it — the parts a restart used to provide.
     func loadModel(id: String, setDefault: Bool = false) async throws -> ModelInfo {
+        guard !externalMediaReserved else { throw ExternalMediaBusy() }
         watchLoads(1)
         defer { watchLoads(-1) }
         let started = Date()
